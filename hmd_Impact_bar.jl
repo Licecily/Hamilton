@@ -1,6 +1,6 @@
 using  ApproxOperator
 
-import ApproxOperator.Hamilton: ∫∫∇q∇pdxdt
+import ApproxOperator.WeightedResidual: ∫kNṄdxdt, ∫kNNdxdt, ∫NṄdxdt, ∫c²B₁B₁dxdt
 import ApproxOperator.Heat: ∫vtdΓ, ∫vgdΓ, ∫vbdΩ, L₂, ∫∫∇v∇udxdy
 
 using GLMakie
@@ -32,21 +32,32 @@ EA = 1.0
 α = 1e15
 L = 1.0
 v₀ = 1.0
+c = √(EA/ρA)
 
-prescribe!(elements["Ω"],:EA=>(x,y,z)->EA)
-prescribe!(elements["Ω"],:ρA=>(x,y,z)->ρA)
+prescribe!(elements["Ω"],:k=>(x,y,z)->EA)
+prescribe!(elements["Ω"],:c=>(x,y,z)->c)
 prescribe!(elements["Γ₁"],:α=>(x,y,z)->α)
 prescribe!(elements["Γ₃"],:α=>(x,y,z)->α)
 prescribe!(elements["Γ₄"],:α=>(x,y,z)->α)
 prescribe!(elements["Γ₁"],:g=>(x,y,z)->0.0)
 prescribe!(elements["Γ₃"],:g=>(x,y,z)->0.0)
 prescribe!(elements["Γ₄"],:g=>(x,y,z)->0.0)
-# prescribe!(elements["Γ₃"],:g=>(x,y,z)->0.0)
-prescribe!(elements["Γ₃"],:𝑃=>(x,y,z)->0.0)
-prescribe!(elements["Γ₄"],:𝑃=>(x,y,z)->0.0)
 prescribe!(elements["Γ₁"],:t=>(x,y,z)->1.0)
 
-𝑎 = ∫∫∇q∇pdxdt=>elements["Ω"]
+Kuu = zeros(nₚ,nₚ)
+Kuv = zeros(nₚ,nₚ)
+Kvv = zeros(nₚ,nₚ)
+Kvu = zeros(nₚ,nₚ)
+
+a₁ = ∫kNṄdxdt => elements["Ω"]
+a₂ = ∫kNNdxdt => elements["Ω"]
+a₃ = ∫NṄdxdt => elements["Ω"]
+a₄ = ∫c²B₁B₁dxdt => elements["Ω"]
+
+a₁(Kuu)
+a₂(Kuv)
+a₃(Kvv)
+a₄(Kvu)
 𝑓 = ∫vtdΓ=>elements["Γ₁"]
 
 𝑎ᵅ = ∫vgdΓ=>elements["Γ₁"]∪elements["Γ₄"]
@@ -59,13 +70,15 @@ fᵅ = zeros(nₚ)
 kᵝ = zeros(nₚ,nₚ)
 fᵝ = zeros(nₚ)
 
-𝑎(k)
 𝑓(f)
 𝑎ᵅ(kᵅ,fᵅ)
 𝑎ᵝ(kᵝ,fᵝ)
 
-dt = [k+kᵅ -k;-k kᵝ]\[fᵅ;-f+fᵝ]
-d = dt[1:nₚ]
+A = [Kuu + kᵅ    Kuv        ;
+     Kvu         Kvv + kᵝ   ]
+b = [fᵅ; fᵝ - f]
+uv = A\b
+d = uv[1:nₚ]
 push!(nodes,:d=>d)
 
 xs = [node.x for node in nodes]'
@@ -91,7 +104,7 @@ for (j,p) in enumerate(elements["Ω"])
     σ[j] = σ_/𝑤_
 end
 
-# vtk_grid("./vtk/impact_bar/Tri6_反向_"*string(ndiv)*"_"*string(nₚ), points, cells) do vtk
-#     vtk["位移"] = d
-#     vtk["应力"] = σ
-# end
+ vtk_grid("./vtk/impact_bar/Tri6_反向_"*string(ndiv)*"_"*string(nₚ), points, cells) do vtk
+     vtk["位移"] = d
+     vtk["应力"] = σ
+ end
