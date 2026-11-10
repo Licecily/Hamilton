@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 10 julia --project -e 'import Gmsh; println\\(Gmsh.version\\(\\)\\)')",
+      "Bash(julia --project -e ' *)",
+      "Bash(awk 'NF>5')",
+      "Bash(grep -a '$EndMeshFormat\\\\|$Nodes\\\\|$EndNodes' msh/DG/DG_4.msh)"
+    ]
+  }
+}

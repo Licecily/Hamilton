@@ -1,43 +1,13 @@
 using  ApproxOperator
-using  BiRefine
 using WriteVTK
-import ApproxOperator.Hamilton: ∫∫∇q∇pdxdt, ∫pudΩ, ∫uudΩ, ∫ppdΩ, stabilization_bar_LSG, stabilization_bar_LSG_Γ, truncation_error, test_boundary_error, test_domain_error
+import ApproxOperator.WeightedResidual: ∫kNṄdxdt, ∫kNNdxdt, ∫NṄdxdt, ∫c²B₁B₁dxdt
 import ApproxOperator.Heat: ∫vtdΓ, ∫vgdΓ, ∫vbdΩ, L₂, ∫∫∇v∇udxdy, H₁
-
+using ApproxOperator.GmshImport: getPhysicalGroups, getElements, get𝑿ᵢ
 using GLMakie, XLSX, LinearAlgebra, LinearSolve
+import Gmsh: gmsh
 
 # ps = MKLPardisoSolver()
 # set_matrixtype!(ps,2)
-
-include("import_hmd.jl")
-# include("importmsh.jl")
-
-ndiv= 32
-
-# elements,nodes = import_hmd_Tri6("./msh/Non-uniform/Tri6_"*string(ndiv)*".msh")
-# elements,nodes = import_hmd_Tri6("./msh/Non-uniform/618/Tri6_0.5_"*string(ndiv)*".msh")
-elements,nodes = import_hmd_Tri6("./msh/square/square_"*string(ndiv)*".msh");uniform = "uniform"
-# elements,nodes = import_hmd_Tri3("./msh/Non-uniform/Tri3_"*string(ndiv)*".msh");uniform = "uniform"
-# elements,nodes = import_hmd_Tri3("./msh/Non-uniform/局部加密/C=0.2/Tri3_"*string(ndiv)*".msh");uniform = "uniform"
-# elements,nodes = import_hmd_Tri6("./msh/Non-uniform/Tri6/"*string(ndiv)*".msh");uniform = "uniform"
-# elements,nodes = import_hmd_Tri3("./msh/Non-uniform/拉伸压缩/2.1_"*string(ndiv)*".msh");uniform = "nonuniform"
-# elements,nodes = import_hmd_Tri3("./msh/square/Tri3反向"*string(ndiv)*".msh");uniform = "uniform"
-# elements,nodes = import_hmd_bar("./msh/bar/bar_"*string(ndiv)*".msh")
-
-# elements,nodes = import_hmd_Tri3("./msh/BiRefine/2d/impact_4_refined_r13.msh");uniform = "uniform"
-
-nₚ = length(nodes)
-nₑ = length(elements["Ω"])
-
-# set∇²𝝭!(elements["Ω"])
-set∇𝝭!(elements["Ω"])
-set𝝭!(elements["Γ₁"])
-set𝝭!(elements["Γ₂"])
-set𝝭!(elements["Γ₃"])
-set𝝭!(elements["Γ₄"])
-# set∇𝝭!(elements["Γ₃ₜ"])
-# set∇𝝭!(elements["Γ₄ₜ"])
-set∇𝝭!(elements["Ωᵍ"])
 
 # ρA = 1.0*25.0/100.0
 ρA = 1.0
@@ -78,74 +48,87 @@ end
 #         return π * cos(π * (t - x))
 #     end
 # end
-prescribe!(elements["Ω"],:EA=>(x,y,z)->EA)
-prescribe!(elements["Ω"],:ρA=>(x,y,z)->ρA)
-prescribe!(elements["Ω"],:α=>(x,y,z)->α)
-prescribe!(elements["Γ₁"],:α=>(x,y,z)->α)
-prescribe!(elements["Γ₂"],:α=>(x,y,z)->α)
-prescribe!(elements["Γ₃"],:α=>(x,y,z)->α)
-prescribe!(elements["Γ₁"],:g=>(x,y,z)->0.0)
-prescribe!(elements["Γ₂"],:g=>(x,y,z)->0.0)
-prescribe!(elements["Γ₃"],:g=>(x,y,z)->0.0)
-prescribe!(elements["Γ₄"],:t=>(x,y,z)->𝑇(y))
-# prescribe!(elements["Γ₃ₜ"],:EA=>(x,y,z)->EA)
-# prescribe!(elements["Γ₄ₜ"],:EA=>(x,y,z)->EA)
-# prescribe!(elements["Γ₃ₜ"],:ρA=>(x,y,z)->ρA)
-# prescribe!(elements["Γ₄ₜ"],:ρA=>(x,y,z)->ρA)
-# prescribe!(elements["Γ₃ₜ"],:α=>(x,y,z)->α)
-# prescribe!(elements["Γ₄ₜ"],:α=>(x,y,z)->α)
-prescribe!(elements["Ω"],:c=>(x,y,z)->c)
 
-prescribe!(elements["Ωᵍ"],:u=>(x,y,z)->𝑢(x,y))
-prescribe!(elements["Ωᵍ"],:∂u∂x=>(x,y,z)->∂u∂x(x,y))
-prescribe!(elements["Ωᵍ"],:∂u∂y=>(x,y,z)->∂u∂t(x,y))
-prescribe!(elements["Ωᵍ"],:∂u∂z=>(x,y,z)->0.0)
+integrationorder = 2
+integrationorder_Ωᵍ = 10
+ndiv= 0.04
+filename = "tri3_"*string(ndiv)
+gmsh.initialize()
+gmsh.open("./msh/Non-uniform/局部加密/C=0.2/"*filename*".msh")
+entities = getPhysicalGroups()
+nodes = get𝑿ᵢ()
+nₚ = length(nodes)
+kᵘᵘ = zeros(nₚ,nₚ)
+kᵘᵛ = zeros(nₚ,nₚ)
+kᵛᵛ = zeros(nₚ,nₚ)
+kᵛᵘ = zeros(nₚ,nₚ)
 
 
-𝑎 = ∫∫∇q∇pdxdt=>elements["Ω"]
-𝑓 = ∫vtdΓ=>elements["Γ₄"]
-# 𝑎ᵅ = ∫vgdΓ=>elements["Γ₁"]∪elements["Γ₂"]∪elements["Γ₃"]∪elements["Γ₄"]
-𝑎ᵅ = ∫vgdΓ=>elements["Γ₁"]∪elements["Γ₂"]
-𝑎ᵝ = ∫vgdΓ=>elements["Γ₃"]∪elements["Γ₂"]
-# 𝑎ᵞ = stabilization_bar_LSG_Γ=>elements["Γ₄ₜ"]∪elements["Γ₃ₜ"]
-# 𝑎ᵞ = [
-#     stabilization_bar_LSG=>elements["Ω"],
-#     # stabilization_bar_LSG_Γ=>elements["Γ₄ₜ"]∪elements["Γ₃ₜ"],
-# ]
+# elements,nodes = import_hmd_Tri6("./msh/Non-uniform/Tri6_"*string(ndiv)*".msh")
+# elements,nodes = import_hmd_Tri6("./msh/Non-uniform/618/Tri6_0.5_"*string(ndiv)*".msh")
+# elements,nodes = import_hmd_Tri6("./msh/square/square_"*string(ndiv)*".msh");uniform = "uniform"
+# elements,nodes = import_hmd_Tri3("./msh/Non-uniform/Tri3_"*string(ndiv)*".msh");uniform = "uniform"
+# elements,nodes = import_hmd_Tri3("./msh/Non-uniform/局部加密/C=0.2/Tri3_"*string(ndiv)*".msh");uniform = "uniform"
+# elements,nodes = import_hmd_Tri6("./msh/Non-uniform/Tri6/"*string(ndiv)*".msh");uniform = "uniform"
+# elements,nodes = import_hmd_Tri3("./msh/Non-uniform/拉伸压缩/2.1_"*string(ndiv)*".msh");uniform = "nonuniform"
+# elements,nodes = import_hmd_Tri3("./msh/square/Tri3反向"*string(ndiv)*".msh");uniform = "uniform"
+# elements,nodes = import_hmd_bar("./msh/bar/bar_"*string(ndiv)*".msh")
 
-k = zeros(nₚ,nₚ)
-kˢ = zeros(nₚ,nₚ)
-f = zeros(nₚ)
+# elements,nodes = import_hmd_Tri3("./msh/BiRefine/2d/impact_4_refined_r13.msh");uniform = "uniform"
+
+
+elements = getElements(nodes, entities["Ω"], integrationorder)
+prescribe!(elements,:k=>EA,:c=>c)
+set∇𝝭!(elements)
+𝑎₁ = ∫kNṄdxdt => elements
+𝑎₂ = ∫kNNdxdt => elements
+𝑎₃ = ∫NṄdxdt => elements
+𝑎₄ = ∫c²B₁B₁dxdt => elements
+𝑎₁(kᵘᵘ)
+𝑎₂(kᵘᵛ)
+𝑎₃(kᵛᵛ)
+𝑎₄(kᵛᵘ)
+
 kᵅ = zeros(nₚ,nₚ)
 fᵅ = zeros(nₚ)
+elements_Γ¹ = getElements(nodes, entities["Γ¹"], integrationorder)
+elements_Γ² = getElements(nodes, entities["Γ²"], integrationorder)
+prescribe!(elements_Γ¹,:α=>α,:g=>0.0)
+prescribe!(elements_Γ²,:α=>α,:g=>0.0)
+set𝝭!(elements_Γ¹)
+set𝝭!(elements_Γ²)
+𝑎ᵅ = ∫vgdΓ=>elements_Γ¹∪elements_Γ²
+𝑎ᵅ(kᵅ,fᵅ)
+
 kᵝ = zeros(nₚ,nₚ)
 fᵝ = zeros(nₚ)
-kᵞ = zeros(nₚ,nₚ)
-kᵗ = zeros(nₚ,nₚ)
-
-𝑎(k)
-𝑓(f)
-𝑎ᵅ(kᵅ,fᵅ)
+elements_Γ¹ = getElements(nodes, entities["Γ¹"], integrationorder)
+prescribe!(elements_Γ¹,:α=>α,:g=>0.0)
+set𝝭!(elements_Γ¹)
+𝑎ᵝ = ∫vgdΓ=>elements_Γ¹
 𝑎ᵝ(kᵝ,fᵝ)
-# 𝑎ᵞ(kᵞ)
 
-# kᵗ = inv(k + kᵅ)
+f = zeros(nₚ)
+elements_Γ⁴ = getElements(nodes, entities["Γ⁴"], integrationorder)
+prescribe!(elements_Γ⁴,:t=>(x,y,z)-> -c^2 * ∂u∂x(x, y))
+set𝝭!(elements_Γ⁴)
+𝑓 = ∫vtdΓ => elements_Γ⁴
+𝑓(f)
 # # kˢ = -k*kᵗ*k' + kᵝ
 # kˢ = [k+kᵅ -k;-k kᵝ]
 # C = condskeel(kˢ)
 # println(C)
 
-dt = [k+kᵅ -k;-k kᵝ]\[fᵅ;-f+fᵝ]
+dt = [kᵘᵘ+kᵅ kᵘᵛ;kᵛᵘ kᵛᵛ+kᵝ]\[fᵅ;fᵝ+f]
+d = dt[1:nₚ]
+δd = dt[nₚ+1:end]
+push!(nodes,:d=>d)
+push!(nodes,:δd=>δd)
 # dt = [k+kᵅ+kᵞ -k-kᵞ;-k-kᵞ kᵝ+kᵞ]\[fᵅ;-f+fᵝ]
 # dt =(k+kᵅ)\(f+fᵅ)
 # prob = LinearProblem([k+kᵅ+kᵞ -k-kᵞ;-k-kᵞ kᵝ+kᵞ], [fᵅ;-f+fᵝ])
 # sol = solve(prob)
 # dt = sol.u
-
-d = dt[1:nₚ]
-δd = dt[nₚ+1:end]
-
-push!(nodes,:d=>d,:δd=>δd)
 
 # ed = test_domain_error(elements["Ω"])
 # e3 = test_boundary_error(elements["Γ₃ₜ"])
@@ -187,7 +170,7 @@ push!(nodes,:d=>d,:δd=>δd)
 #     Sheet["B"*string(ind)] = 𝐻₁
 #     Sheet["C"*string(ind)] = 𝐿₂
 # end
-
+nₑ = length(elements)
 fig = Figure()
 ax1 = Axis3(fig[1,1])
 # ax2 = Axis3(fig[1,2])
@@ -216,7 +199,7 @@ for (i,node) in enumerate(nodes)
     es[i] = ds[i] - us[i]
 end
 face = zeros(nₑ,3)
-for (i,elm) in enumerate(elements["Ω"])
+for (i,elm) in enumerate(elements)
     face[i,:] .= [x.𝐼 for x in elm.𝓒]
 end
 
@@ -235,20 +218,18 @@ fig
 # save("./fig/hmd_2d/Tri3/非均布/n=80.png",fig)
 
 
-# points = zeros(3,nₚ)
-# for (i,node) in enumerate(nodes)
-#     points[1,i] = node.x
-#     points[2,i] = node.y
-#     points[3,i] = node.d*4
-#     # points[3,i] = us[i]*4
-# end
-# cells = [MeshCell(VTKCellTypes.VTK_TRIANGLE_STRIP,[x.𝐼 for x in elm.𝓒]) for elm in elements["Ω"]]
-# # vtk_grid("./vtk/hmd_2d/error/non_uniform_Tri3_"*string(ndiv)*".vtu",points,cells) do vtk
-# vtk_grid("./vtk/hmd_2d/Tri3_d_"*string(ndiv)*".vtu",points,cells) do vtk
-#     vtk["d"] = [node.d for node in nodes]
-#     # vtk["精确解"] = us
-# end
-
+ points = zeros(3,nₚ)
+ for (i,node) in enumerate(nodes)
+     points[1,i] = node.x
+     points[2,i] = node.y
+     points[3,i] = node.d*4
+     points[3,i] = us[i]*4
+ end
+ cells = [MeshCell(VTKCellTypes.VTK_TRIANGLE_STRIP,[x.𝐼 for x in elm.𝓒]) for elm in elements]
+ vtk_grid("./vtk/hmd_2d/Tri3_d_"*string(ndiv)*".vtu",points,cells) do vtk
+     vtk["d"] = [node.d for node in nodes]
+      # vtk["精确解"] = us
+ end
 # fₓ,fₜ,fₓₓ,fₜₜ = truncation_error(elements["Ω"],nₚ)
 # println(fₓ)
 # println(fₜ)
