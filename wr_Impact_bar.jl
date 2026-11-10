@@ -1,6 +1,6 @@
 using  ApproxOperator
 
-import ApproxOperator.WeightedResidual: ∫kNṄdxdt, ∫kNNdxdt, ∫NṄdxdt, ∫c²B₁B₁dxdt
+import ApproxOperator.WeightedResidual: ∫∫kNṄdxdt, ∫∫kNNdxdt, ∫∫NṄdxdt, ∫∫c²B₁B₁dxdt
 import ApproxOperator.Heat: ∫vtdΓ, ∫vgdΓ, ∫vbdΩ, L₂, ∫∫∇v∇udxdy
 
 using ApproxOperator.GmshImport: getPhysicalGroups, getElements, get𝑿ᵢ
@@ -19,7 +19,7 @@ c = √(EA/ρA)
 
 integrationorder = 2
 integrationorder_Ωᵍ = 10
-ndiv= 16
+ndiv= 8
 filename = "Tri3反向"*string(ndiv)
 gmsh.initialize()
 gmsh.open("./msh/b=2/"*filename*".msh")
@@ -34,10 +34,10 @@ kᵛᵘ = zeros(nₚ,nₚ)
 elements = getElements(nodes, entities["Ω"], integrationorder)
 prescribe!(elements,:k=>EA,:c=>c)
 set∇𝝭!(elements)
-𝑎₁ = ∫kNṄdxdt => elements
-𝑎₂ = ∫kNNdxdt => elements
-𝑎₃ = ∫NṄdxdt => elements
-𝑎₄ = ∫c²B₁B₁dxdt => elements
+𝑎₁ = ∫∫kNṄdxdt => elements
+𝑎₂ = ∫∫kNNdxdt => elements
+𝑎₃ = ∫∫NṄdxdt => elements
+𝑎₄ = ∫∫c²B₁B₁dxdt => elements
 𝑎₁(kᵘᵘ)
 𝑎₂(kᵘᵛ)
 𝑎₃(kᵛᵛ)
@@ -70,7 +70,7 @@ xs = [node.x for node in nodes]'
 ys = [node.y for node in nodes]'
 zs = [node.z for node in nodes]'
 points = [xs; ys; zs]
-cells = [MeshCell(VTKCellTypes.VTK_TRIANGLE_STRIP, [xᵢ.𝐼 for xᵢ in elm.𝓒]) for elm in elements]
+cells = [MeshCell(VTKCellTypes.VTK_TRIANGLE, [xᵢ.𝐼 for xᵢ in elm.𝓒]) for elm in elements]
 
 nₑ = length(elements)
 σ = zeros(nₑ)
